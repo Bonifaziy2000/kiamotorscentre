@@ -1,0 +1,90 @@
+1. **Установка необходимых пакетов**:
+   ```bash
+   npm init -y
+   npm install express body-parser cors mongoose bcryptjs jsonwebtoken
+   ```
+
+2. **Создание файла `server.js`**:
+   ```javascript
+   const express = require('express');
+   const bodyParser = require('body-parser');
+   const mongoose = require('mongoose');
+   const bcrypt = require('bcryptjs');
+   const jwt = require('jsonwebtoken');
+
+   const app = express();
+   app.use(bodyParser.json());
+   app.use(cors());
+
+   mongoose.connect('mongodb://localhost:27017/kiamotors', { useNewUrlParser: true, useUnifiedTopology: true });
+
+   const UserSchema = new mongoose.Schema({
+       username: String,
+       password: String,
+       subscriptions: [String],
+   });
+
+   const PostSchema = new mongoose.Schema({
+       userId: String,
+       content: String,
+       tags: [String],
+       isHidden: Boolean,
+       comments: [{ userId: String, comment: String }],
+   });
+
+   const User = mongoose.model('User', UserSchema);
+   const Post = mongoose.model('Post', PostSchema);
+
+   // Регистрация пользователя
+   app.post('/register', async (req, res) => {
+       const hashedPassword = await bcrypt.hash(req.body.password, 10);
+       const user = new User({ username: req.body.username, password: hashedPassword });
+       await user.save();
+       res.sendStatus(201);
+   });
+
+   // Вход пользователя
+   app.post('/login', async (req, res) => {
+       const user = await User.findOne({ username: req.body.username });
+       if (user && await bcrypt.compare(req.body.password, user.password)) {
+           const token = jwt.sign({ id: user._id }, 'secretkey');
+           res.json({ token });
+       } else {
+           res.sendStatus(401);
+       }
+   });
+
+   // Создание поста
+   app.post('/posts', async (req, res) => {
+       const post = new Post(req.body);
+       await post.save();
+       res.sendStatus(201);
+   });
+
+   // Получение публичных постов
+   app.get('/posts', async (req, res) => {
+       const posts = await Post.find({ isHidden: false });
+       res.json(posts);
+   });
+
+   // Комментарии к постам
+   app.post('/posts/:id/comments', async (req, res) => {
+       await Post.updateOne({ _id: req.params.id }, { $push: { comments: req.body } });
+       res.sendStatus(200);
+   });
+
+   // Редактирование поста
+   app.put('/posts/:id', async (req, res) => {
+       await Post.updateOne({ _id: req.params.id }, req.body);
+       res.sendStatus(200);
+   });
+
+   // Удаление поста
+   app.delete('/posts/:id', async (req, res) => {
+       await Post.deleteOne({ _id: req.params.id });
+       res.sendStatus(200);
+   });
+
+   app.listen(3000, () => {
+       console.log('Server is running on port 3000');
+   });
